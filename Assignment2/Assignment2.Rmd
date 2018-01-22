@@ -1,0 +1,294 @@
+---
+title: "Elements of Statistics, Econometrics and Time Series Analysis (2017)"
+author: "Oleksandr Zaytsev"
+output: html_notebook
+subtitle: Assignment 2
+---
+
+```{r}
+library(ggplot2)
+library(tidyr) #pipes
+library(purrr) #keep
+library(stats) #bartlett.test
+library(lmtest) #resettest
+```
+
+# Problem 3: Linear regression analysis
+
+**In the light of the hot discussion on the educational system in Ukraine we consider here a data set on student performance at two schools in Portugal. The data set can be downloaded at [http://archive.ics.uci.edu/ml/datasets/Student+Performance](http://archive.ics.uci.edu/ml/datasets/Student+Performance).**
+
+**The zip-file contains some personal information and the grades in Mathematics (student-mat.csv) and Portuguese language (student-por.csv). Pick up the file for Math. The variable of interest is the final grade coded as G3. The remaining variables are used as explanatory variables. Hereafter we exclude G1 and G2 from the discussion and the analysis!**
+
+```{r}
+student.mat <- read.csv('../../Data/student/student-mat.csv', sep = ';')
+
+# Removing columns G1 and G2
+student.mat <- subset(student.mat, select = -c(G1, G2))
+```
+
+## Task 1
+**Have a closer look at the definitions of the variables and analyze which of them might require a separate treatment. Consider for example the variables Mjob or goout. There are two possibilities how the variables can be included into the model (one with dummy variables, the other one without dummies). Think about these two approaches and suggest which approach is more appropriate for each of the variables MjOb or goout. Motivate your decision.**
+
+In order to train a linear regression model, we need all our variables to be numeric. Some categorical variables (such as Mjob or school) are represented with strings. This means that the levels of these variables have to be encoded with numbers. We can do it either by simply enumerating the levels or by creating a dummy variable for each level (or n-1 dummy variables to replace a categorical variable with n levels). These are the two possibilities mentioned in task description.
+
+There are two types of categorical variables:
+
+* *Ordinal* - the levels can be sorted (XS, S, M, L, XL)
+* *Nominal* - with no specific order of levels (male, female)
+
+The first approach described above is suitable for ordinal variables. Their order will be preserved by the numbers we assign to them. For example, clothing sizes can be encoded with integers 1-5:
+
+```{r}
+sizes <- factor(c('XS', 'S', 'M', 'L', 'XL'))
+sizes <- factor(sizes, levels = sizes, ordered = TRUE)
+as.numeric(sizes)
+```
+
+Second approach is better suited for nominal variables. If we encode them with integers, we introduce an order which is not natural for these variables. The better way is to use one-hot encoding or create dummy variables. For example
+
+```{r}
+sex <- factor(c('male', 'female'))
+model.matrix(~sex)
+```
+
+In our case, goout is an ordinary variable (though it seems as quantitative, it's in fact a categorical variable with numbers 1-5 as levels). It should not be turned into dummy variables because we need to know that 3 is greater than 2 but less than 4. Mjob, on the other hand is nominal. If we encode jobs 'teacher', 'services', and 'at_home' with 1, 2 and 3, our model will assume that 'teacher' is somehow closer to 'at_home' than it is to 'services'. That's why it is better to replace Mjob and all other nominal variables with dummies. This will be automatically done by linear model, so we don't need to change anything.
+
+## Task 2
+**Consider now the dependent variable and the interval (metric) scaled explanatory variables. Plot these data and decide if you wish to transform these x-variables and if there is a need to transform the y variable. You can also use some measure of skewness to decide about y.**
+
+```{r}
+student.mat %>%
+  keep(is.numeric) %>%                    
+  gather(-G3, key = "var", value = "value") %>%
+  ggplot(aes(x = value, y = G3)) +                  
+    geom_point() +
+    facet_wrap(~ var, scales = "free")
+```
+
+
+
+## Task 3
+**After making up your decision about the above two problems run a simple linear regression. If you wish to argue that farther's job is insignificant and use the model with dummies than you have to check the simultaneous insignificance of all dummies which stem from the factor variable Fjob. Run a test for general linear hypothesis and conclude about the significance of Fjob.**
+
+```{r}
+# Regress y on all of the other variables in the dataset
+model <- lm(G3 ~ ., data = student.mat)
+summary(model)
+```
+
+We can see that Fjob is insignificant.
+
+```{r echo=FALSE}
+fill <- "#4271AE"
+line <- "#1F3552"
+
+ggplot(student.mat, aes(x = Fjob, y = G3)) +
+  geom_boxplot(fill = fill, colour = line) +
+  theme_bw()
+```
+
+## Task 4
+**Provide an economic interpretation for the parameters of age, Fjob, and goout. Neglect the possible insignificance and keep in mind possible transformations of the variables.**
+
+Student's performance is not affected by the job of his father (unless his father is a techer - children of teachers tend to perform better), slightly affected by student's age, and strongly affected by how often he goes out.
+
+## Task 5
+**Compute the 95% confidence intervals for the parameters of absences and famsup and provide its economic meaning. The CIs are computed relying on the assumption, that the residuals follow normal distribution. Is this assumption fulfilled? Run an appropriate goodness-of-fit test.**
+
+```{r}
+model <- lm(G3 ~ absences + famsup, data = student.mat)
+summary(model)
+```
+
+The 95% confidence intervals are the estimated coefficients (0.02016 and -0.37585) ± their two standard errors (0.02888 and 0.47389)
+
+```{r}
+confint(model, level = 0.95)
+```
+
+It means thet for each variable, asences and famsup, there is a 95% chance that the calculated confidence interval calculated contains its true mean.
+
+But let's test if residuals follow the normal distribution. The most widely used test for normality is the Shapiro-Wilks test
+
+```{r}
+residuals <- residuals(model)
+shapiro.test(residuals)
+```
+
+p-value is very small, which means that residuals are not normaly distributed.
+
+## Task 6
+**Many of the variable appear insignificant and we should find the smallest model, which still has a good explanatory power. Choose this model using stepwise model selection (either based on the tests for R2 or using AIC/BIC). Pick up the last step of the model selection procedure and explain in details how the method/approach works (or is implemented in your software). Work with this model in all the remaining steps.**
+
+We will use a step function which returns a stepwise-selected using AIC (Akaike information criterion - an estimator of the relative quality of statistical models)
+
+```{r, message=F, warning=F}
+model <- lm(G3 ~ ., data = student.mat)
+best.model <- step(model)
+```
+
+We store the selected linear model as best.model. Let's also store the selected features separately
+
+```{r}
+selected.features <- variable.names(best.model)
+
+# Exclude the intercept
+selected.features <- selected.features[-1]
+selected.features
+```
+
+## Task 7
+**Sometimes data contains outliers which induces bias in the parameter estimates. Check for outliers using Cook’s distance and leverage. Have a closer look at the observation with the highest leverage (regardless if it is classified as an outlier or not). What makes this observation so outstanding (you may have a look at Box-plots for interval scaled variables or at the frequencies for binary/ordinal variables?**
+
+```{r}
+cooksd <- cooks.distance(best.model)
+threshold <- 4 * mean(cooksd, na.rm=TRUE)
+```
+
+```{r}
+plot(cooksd, pch="*", cex=2, main="Influential Observations by Cooks distance")
+
+# Add the threshold line
+abline(h = threshold, col="red")
+
+# Add labels
+text(x = 1:length(cooksd) + 1,
+     y = cooksd,
+     labels=ifelse(cooksd > threshold, names(cooksd), ""),
+     col = "red")  # add labels
+```
+
+```{r}
+# Row numbers of influential observations
+influential <- as.numeric(names(cooksd)[(cooksd > threshold)])
+influential
+```
+
+```{r}
+plot(best.model, which=5)
+```
+
+Examples with the highest leverage are 141, 260, and 277.
+
+```{r}
+#student.mat[c(141, 260, 277), selected.features]
+```
+
+## Task 8
+**Frequently data is missing. Pick up 5 rows in the data set and delete the value for age. Implement at least two approaches to fill in these values. Write down the corresponding formulas/model and give motivation for your approach. If you use standard routines then check how exactly the data imputation is implemented. How would you proceed if the value of the binary variable higher is missing? Implementation is not required.**
+
+Let's define a function that will return the number of rows with missing values in a given data frame
+
+```{r}
+nrow.with.na <- function(df) {
+  rows.with.na <- df[!complete.cases(df),]
+  nrow(rows.with.na)
+}
+```
+
+The original data frame has no missing values
+
+```{r}
+nrow.with.na(student.mat)
+```
+
+So we choose 5 rows at random and assign the value of age equal to NA
+
+```{r}
+rows <- sample(1:nrow(student.mat), size=5, replace=FALSE)
+
+# Create a copy of a data frame
+student.mat.na <- data.frame(student.mat)
+student.mat.na$age[rows] <- NA
+```
+
+Now we have 5 rows with missing values for age.
+
+```{r}
+nrow.with.na(student.mat.na)
+```
+
+The safest way of handling missing values is to exclude these rows from analysis.
+
+```{r}
+student.mat.ex <- na.exclude(student.mat.na)
+nrow.with.na(student.mat.ex)
+```
+
+The resulting data frame has `r nrow(student.mat.ex)` rows, which means that `r nrow(student.mat.na) - nrow(student.mat.ex)` rows were excluded. We can also see that it has no missing values.
+
+Another approach is to fill all empty cells with some values. For example, the mean of the existing values
+
+```{r}
+# Calculate the mean of the existing age values
+mean.age <- mean(student.mat.na$age, na.rm=TRUE)
+
+# Create a copy of a data frame with missing values
+student.mat.mean <- data.frame(student.mat.na)
+
+# Fill missing values with the calsulated mean
+student.mat.mean[!complete.cases(student.mat.na),]$age <- mean.age
+```
+
+The resulting data frame will have no missing values
+
+```{r}
+nrow.with.na(student.mat.mean)
+```
+
+And the original mean of the age column was preserved
+
+```{r}
+mean(student.mat.na$age, na.rm=TRUE) == mean(student.mat.mean$age)
+```
+
+## Task 9
+**Now we look at the model assumptions. The variable goout seems to be very significant. However, if we look at the residuals we observe that the variance of the residuals is rather different for different values of goout. Run the Bartlett’s test and compute the FGLS estimators assuming groupwise heteroscedasticity. Compare the results with the original model. Explain the advantages of the (F)GLS estimation.**
+
+```{r}
+bartlett.test(G3 ~ goout, data = student.mat)
+```
+
+From the output we can see that the p-value of 0.387 is much higher than 0.05. This means we cannot reject the null hypothesis that the variance is the same for all values of goout.
+
+## Task 10
+**Compute the White estimator of covariance matrix of the OLS estimators. Run the t-tests and compare the results with the original model. Explain the advantages of the White estimator for the variance.**
+
+
+
+## Task 11
+**Write a short summary with the pedagogical and political interpretation of the estimated model.**
+
+We've learned that `r selected.features` are the most important factors that influence student performance.
+
+# Problem 4: further issues + some theory
+
+# Monte-Carlo simulation: asymptotic properties of the OLS estimators
+
+We postulate the true regression model in the form
+$$ y_{t} = 1 + 2 \cdot x_{1t} + 3 \cdot x_{2t} + u_{t} $$
+
+Consider two setups of the simulation study.
+(A) Draw $x_{1t}$ from $N(0, 0.4)$ and $x_{2t}$ from $N(0, 0.8)$ in such way that $Corr(x_{1t}, x_{2t}) = \rho$ (for example $\rho = 0.2$). $u_{t} \sim N(0,1)$ and $Corr(u_{t}, u_{s}) = 0$ of $t \neq s$.
+
+```{r}
+n <- 100
+x1 <- rnorm(n, 0, 0.4)
+x2 <- rnorm(n, 0, 0.8)
+```
+
+```{r}
+cor(x1, x2)
+```
+
+# Adding a new observation
+
+# Shifts of the variables, demeaned regression
+
+Davidson and MacKinnon, 2004, p. 121, Ex. 3.22) Consider a linear regression model for a dependent variable $y_{t}$ that has a sample mean of 17.21. Suppose that we create a new variable $y_{t}^{*} = y_{t} + 10$ and run the same linear regression using $y_{t}^{*}$ instead of $y_{t}$ as a regressand.
+
+
+Shifts of the variables, demeaned regression
+(1)
+
+Intercept will increase by 10

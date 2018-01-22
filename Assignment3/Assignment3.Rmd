@@ -1,0 +1,39 @@
+---
+title: "Elements of Statistics, Econometrics and Time Series Analysis (2017)"
+author: "Oleksandr Zaytsev"
+output: html_notebook
+subtitle: Assignment 3
+---
+
+```{r}
+library(gdata)
+library(glmnet)
+library(dplyr)
+library(ggplot2)
+```
+
+# Problem 5: Regression techniques
+
+```{r}
+ceo <- read.xls('../data/ceo.xls')
+head(ceo)
+```
+
+### 1. The lasso regression
+**The lasso regression is an alternative approach to variable selection**
+
+**(a) Explain in your own words the idea of the lasso regression. Sketch a situation when a simple linear regression fails, but the lasso regression still can be estimated.**
+
+**(b) For the usual regression model the variables are rarely normalized/standardized. However, in the case of the lasso regression the scaling becomes crucial. Why?**
+
+**(c) Run a lasso regression for scaled ((xi − x ̄)/σˆx) data with α ∈ (0, 1). Plot the estimated parameters as functions of α. Which value of α would you recommend?**
+
+### 5. Regression trees.
+
+**(a) Assume the first variable to be used for splitting is assets. Write down the corresponding optimization problem and explain how the optimization works.**
+
+
+
+**(b) Obviously you can get very long trees. Tree prunning helps to get trees of a reasonable size. Fit a CART to the data and prune it to have at most 10 splits. What is the value of the corresponding complexity parameter? Check you software for the implementation of the prunning, particularly the form of the loss function.**
+
+**(c) Which properties of the trees guarantees that prunning using a single complexity parameter works? Give short verbal summary of these properties.**
